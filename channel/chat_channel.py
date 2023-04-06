@@ -1,14 +1,12 @@
 
 
 from asyncio import CancelledError
-import queue
 from concurrent.futures import Future, ThreadPoolExecutor
 import os
 import re
 import threading
 import time
-from channel.chat_message import ChatMessage
-from common.expired_dict import ExpiredDict
+from common.dequeue import Dequeue
 from channel.channel import Channel
 from bridge.reply import *
 from bridge.context import *
@@ -50,7 +48,7 @@ class ChatChannel(Channel):
         if first_in: # context首次传入时，receiver是None，根据类型设置receiver
             config = conf()
             cmsg = context['msg']
-            if cmsg.from_user_id == self.user_id and not config.get('trigger_by_self', False):
+            if cmsg.from_user_id == self.user_id and not config.get('trigger_by_self', True):
                 logger.debug("[WX]self message skipped")
                 return None
             if context["isgroup"]:
@@ -114,10 +112,10 @@ class ChatChannel(Channel):
             else:
                 context.type = ContextType.TEXT
             context.content = content
-            if 'desire_rtype' not in context and conf().get('always_reply_voice'):
+            if 'desire_rtype' not in context and conf().get('always_reply_voice') and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                 context['desire_rtype'] = ReplyType.VOICE
         elif context.type == ContextType.VOICE: 
-            if 'desire_rtype' not in context and conf().get('voice_reply_voice'):
+            if 'desire_rtype' not in context and conf().get('voice_reply_voice') and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                 context['desire_rtype'] = ReplyType.VOICE
 
         return context
@@ -184,19 +182,25 @@ class ChatChannel(Channel):
             reply = e_context['reply']
             desire_rtype = context.get('desire_rtype')
             if not e_context.is_pass() and reply and reply.type:
+                
+                if reply.type in self.NOT_SUPPORT_REPLYTYPE:
+                    logger.error("[WX]reply type not support: " + str(reply.type))
+                    reply.type = ReplyType.ERROR
+                    reply.content = "不支持发送的消息类型: " + str(reply.type)
+
                 if reply.type == ReplyType.TEXT:
                     reply_text = reply.content
-                    if desire_rtype == ReplyType.VOICE:
+                    if desire_rtype == ReplyType.VOICE and ReplyType.VOICE not in self.NOT_SUPPORT_REPLYTYPE:
                         reply = super().build_text_to_voice(reply.content)
                         return self._decorate_reply(context, reply)
                     if context['isgroup']:
                         reply_text = '@' +  context['msg'].actual_user_nickname + ' ' + reply_text.strip()
-                        reply_text = conf().get("group_chat_reply_prefix", "")+reply_text
+                        reply_text = conf().get("group_chat_reply_prefix", "") + reply_text
                     else:
-                        reply_text = conf().get("single_chat_reply_prefix", "")+reply_text
+                        reply_text = conf().get("single_chat_reply_prefix", "") + reply_text
                     reply.content = reply_text
                 elif reply.type == ReplyType.ERROR or reply.type == ReplyType.INFO:
-                    reply.content = str(reply.type)+":\n" + reply.content
+                    reply.content = "["+str(reply.type)+"]\n" + reply.content
                 elif reply.type == ReplyType.IMAGE_URL or reply.type == ReplyType.VOICE or reply.type == ReplyType.IMAGE:
                     pass
                 else:
@@ -245,8 +249,11 @@ class ChatChannel(Channel):
         session_id = context['session_id']
         with self.lock:
             if session_id not in self.sessions:
-                self.sessions[session_id] = (queue.Queue(), threading.BoundedSemaphore(conf().get("concurrency_in_session", 1)))
-            self.sessions[session_id][0].put(context)
+                self.sessions[session_id] = [Dequeue(), threading.BoundedSemaphore(conf().get("concurrency_in_session", 1))]
+            if context.type == ContextType.TEXT and context.content.startswith("#"): 
+                self.sessions[session_id][0].putleft(context) # 优先处理管理命令
+            else:
+                self.sessions[session_id][0].put(context)
 
     # 消费者函数，单独线程，用于从消息队列中取出消息并处理
     def consume(self):
@@ -272,12 +279,26 @@ class ChatChannel(Channel):
                             semaphore.release()
             time.sleep(0.1)
 
-    def cancel(self, session_id):
+    # 取消session_id对应的所有任务，只能取消排队的消息和已提交线程池但未执行的任务
+    def cancel_session(self, session_id): 
         with self.lock:
             if session_id in self.sessions:
                 for future in self.futures[session_id]:
                     future.cancel()
-                self.sessions[session_id][0]=queue.Queue()
+                cnt = self.sessions[session_id][0].qsize()
+                if cnt>0:
+                    logger.info("Cancel {} messages in session {}".format(cnt, session_id))
+                self.sessions[session_id][0] = Dequeue()
+    
+    def cancel_all_session(self):
+        with self.lock:
+            for session_id in self.sessions:
+                for future in self.futures[session_id]:
+                    future.cancel()
+                cnt = self.sessions[session_id][0].qsize()
+                if cnt>0:
+                    logger.info("Cancel {} messages in session {}".format(cnt, session_id))
+                self.sessions[session_id][0] = Dequeue()
     
 
 def check_prefix(content, prefix_list):
