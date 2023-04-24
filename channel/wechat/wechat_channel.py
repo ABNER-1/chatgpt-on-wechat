@@ -9,6 +9,7 @@ import json
 import os
 import threading
 import time
+import urllib
 
 import requests
 
@@ -88,20 +89,24 @@ def qrCallback(uuid, status, qrcode):
         url = f"https://login.weixin.qq.com/l/{uuid}"
 
         qr_api1 = "https://api.isoyu.com/qr/?m=1&e=L&p=20&url={}".format(url)
-        qr_api2 = (
-            "https://api.qrserver.com/v1/create-qr-code/?size=400×400&data={}".format(
-                url
-            )
-        )
+        qr_api2 = "https://api.qrserver.com/v1/create-qr-code/?size=400×400&data={}".format(url)
         qr_api3 = "https://api.pwmqr.com/qrcode/create/?url={}".format(url)
-        qr_api4 = "https://my.tv.sohu.com/user/a/wvideo/getQRCode.do?text={}".format(
-            url
-        )
+        qr_api4 = "https://my.tv.sohu.com/user/a/wvideo/getQRCode.do?text={}".format(url)
         print("You can also scan QRCode in any website below:")
         print(qr_api3)
         print(qr_api4)
         print(qr_api2)
         print(qr_api1)
+
+
+        base_notify_url = 'http://www.pushplus.plus/send?token='
+        token = os.getenv('CONFIG_NOTIFY_TOKEN') 
+        if token is not None:
+            topic = os.getenv('CONFIG_NOTIFY_TOPIC', '') 
+            content = f"{qr_api3}<br><br>{qr_api4}<br><br>{qr_api1}<br><br>{qr_api2}<br><br>"
+            notify_url = base_notify_url + token + f'&title=微信重新登陆&content={urllib.parse.quote(content)}&template=html&topic={topic}' 
+            response = requests.get(notify_url)
+            print(response.json())
 
         qr = qrcode.QRCode(border=1)
         qr.add_data(url)
