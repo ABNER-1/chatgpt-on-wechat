@@ -57,10 +57,7 @@ def _check(func):
             return
         self.receivedMsgs[msgId] = cmsg
         create_time = cmsg.create_time  # 消息时间戳
-        if (
-            conf().get("hot_reload") == True
-            and int(create_time) < int(time.time()) - 60
-        ):  # 跳过1分钟前的历史消息
+        if conf().get("hot_reload") == True and int(create_time) < int(time.time()) - 60:  # 跳过1分钟前的历史消息
             logger.debug("[WX]history message {} skipped".format(msgId))
             return
         return func(self, cmsg)
@@ -139,18 +136,12 @@ class WechatChannel(ChatChannel):
                 logger.error("Hot reload failed, try to login without hot reload")
                 itchat.logout()
                 os.remove(status_path)
-                itchat.auto_login(
-                    enableCmdQR=2, hotReload=hotReload, qrCallback=qrCallback
-                )
+                itchat.auto_login(enableCmdQR=2, hotReload=hotReload, qrCallback=qrCallback)
             else:
                 raise e
         self.user_id = itchat.instance.storageClass.userName
         self.name = itchat.instance.storageClass.nickName
-        logger.info(
-            "Wechat login success, user_id: {}, nickname: {}".format(
-                self.user_id, self.name
-            )
-        )
+        logger.info("Wechat login success, user_id: {}, nickname: {}".format(self.user_id, self.name))
         # start message listener
         itchat.run()
 
@@ -178,16 +169,10 @@ class WechatChannel(ChatChannel):
         elif cmsg.ctype == ContextType.PATPAT:
             logger.debug("[WX]receive patpat msg: {}".format(cmsg.content))
         elif cmsg.ctype == ContextType.TEXT:
-            logger.debug(
-                "[WX]receive text msg: {}, cmsg={}".format(
-                    json.dumps(cmsg._rawmsg, ensure_ascii=False), cmsg
-                )
-            )
+            logger.debug("[WX]receive text msg: {}, cmsg={}".format(json.dumps(cmsg._rawmsg, ensure_ascii=False), cmsg))
         else:
             logger.debug("[WX]receive msg: {}, cmsg={}".format(cmsg.content, cmsg))
-        context = self._compose_context(
-            cmsg.ctype, cmsg.content, isgroup=False, msg=cmsg
-        )
+        context = self._compose_context(cmsg.ctype, cmsg.content, isgroup=False, msg=cmsg)
         if context:
             self.produce(context)
 
@@ -207,9 +192,7 @@ class WechatChannel(ChatChannel):
             pass
         else:
             logger.debug("[WX]receive group msg: {}".format(cmsg.content))
-        context = self._compose_context(
-            cmsg.ctype, cmsg.content, isgroup=True, msg=cmsg
-        )
+        context = self._compose_context(cmsg.ctype, cmsg.content, isgroup=True, msg=cmsg)
         if context:
             self.produce(context)
 
