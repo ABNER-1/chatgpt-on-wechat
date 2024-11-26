@@ -1,7 +1,13 @@
 import shutil
 import wave
 
-import pysilk
+from common.log import logger
+
+try:
+    import pysilk
+except ImportError:
+    logger.debug("import pysilk failed, wechaty voice message will not be supported.")
+
 from pydub import AudioSegment
 
 sil_supports = [8000, 12000, 16000, 24000, 32000, 44100, 48000]  # slk转wav时，支持的采样率
@@ -58,7 +64,9 @@ def any_to_wav(any_path, wav_path):
     if any_path.endswith(".sil") or any_path.endswith(".silk") or any_path.endswith(".slk"):
         return sil_to_wav(any_path, wav_path)
     audio = AudioSegment.from_file(any_path)
-    audio.export(wav_path, format="wav")
+    audio.set_frame_rate(8000)    # 百度语音转写支持8000采样率, pcm_s16le, 单通道语音识别
+    audio.set_channels(1)
+    audio.export(wav_path, format="wav", codec='pcm_s16le')
 
 
 def any_to_sil(any_path, sil_path):
@@ -80,6 +88,21 @@ def any_to_sil(any_path, sil_path):
     return audio.duration_seconds * 1000
 
 
+def any_to_amr(any_path, amr_path):
+    """
+    把任意格式转成amr文件
+    """
+    if any_path.endswith(".amr"):
+        shutil.copy2(any_path, amr_path)
+        return
+    if any_path.endswith(".sil") or any_path.endswith(".silk") or any_path.endswith(".slk"):
+        raise NotImplementedError("Not support file type: {}".format(any_path))
+    audio = AudioSegment.from_file(any_path)
+    audio = audio.set_frame_rate(8000)  # only support 8000
+    audio.export(amr_path, format="amr")
+    return audio.duration_seconds * 1000
+
+
 def sil_to_wav(silk_path, wav_path, rate: int = 24000):
     """
     silk 文件转 wav
@@ -87,3 +110,26 @@ def sil_to_wav(silk_path, wav_path, rate: int = 24000):
     wav_data = pysilk.decode_file(silk_path, to_wav=True, sample_rate=rate)
     with open(wav_path, "wb") as f:
         f.write(wav_data)
+
+
+def split_audio(file_path, max_segment_length_ms=60000):
+    """
+    分割音频文件
+    """
+    audio = AudioSegment.from_file(file_path)
+    audio_length_ms = len(audio)
+    if audio_length_ms <= max_segment_length_ms:
+        return audio_length_ms, [file_path]
+    segments = []
+    for start_ms in range(0, audio_length_ms, max_segment_length_ms):
+        end_ms = min(audio_length_ms, start_ms + max_segment_length_ms)
+        segment = audio[start_ms:end_ms]
+        segments.append(segment)
+    file_prefix = file_path[: file_path.rindex(".")]
+    format = file_path[file_path.rindex(".") + 1 :]
+    files = []
+    for i, segment in enumerate(segments):
+        path = f"{file_prefix}_{i+1}" + f".{format}"
+        segment.export(path, format=format)
+        files.append(path)
+    return audio_length_ms, files

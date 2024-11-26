@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chatgpt-on-wechat
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: chatgpt-on-wechat
+  template:
+    metadata:
+      labels:
+        app: chatgpt-on-wechat
+    spec:
+      containers:
+      - name: chatgpt-on-wechat
+        image: registry-vpc.cn-hangzhou.aliyuncs.com/abner1/chatgpt-on-wechat
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1Gi"
+          limits:
+            cpu: "1000m"
+            memory: "2Gi"
+        env:
+        - name: CONFIG_PREFIX
+          value: "/config"
+      
+        volumeMounts:
+        - name: config-volume
+          mountPath: /config  # 配置文件将被挂载到这个目录
+      volumes:
+      - name: config-volume
+        configMap:
+          name: chatbot-config

@@ -98,8 +98,9 @@ class Role(Plugin):
     def on_handle_context(self, e_context: EventContext):
         if e_context["context"].type != ContextType.TEXT:
             return
-        bottype = Bridge().get_bot_type("chat")
-        if bottype not in (const.CHATGPT, const.OPEN_AI):
+        btype = Bridge().get_bot_type("chat")
+        if btype not in [const.OPEN_AI, const.CHATGPT, const.CHATGPTONAZURE, const.QWEN_DASHSCOPE, const.XUNFEI, const.BAIDU, const.ZHIPU_AI, const.MOONSHOT, const.MiniMax, const.LINKAI]:
+            logger.debug(f'不支持的bot: {btype}')
             return
         bot = Bridge().get_bot("chat")
         content = e_context["context"].content[:]

@@ -4,14 +4,15 @@ import time
 import web
 from wechatpy import parse_message
 from wechatpy.replies import ImageReply, VoiceReply, create_reply
-
+import textwrap
 from bridge.context import *
 from bridge.reply import *
 from channel.wechatmp.common import *
 from channel.wechatmp.wechatmp_channel import WechatMPChannel
 from channel.wechatmp.wechatmp_message import WeChatMPMessage
 from common.log import logger
-from config import conf
+from common.utils import split_string_by_utf8_length
+from config import conf, subscribe_msg
 
 
 # This class is instantiated once per query
@@ -48,7 +49,7 @@ class Query:
 
                 # New request
                 if (
-                    from_user not in channel.cache_dict
+                    channel.cache_dict.get(from_user) is None
                     and from_user not in channel.running
                     or content.startswith("#")
                     and message_id not in channel.request_cnt  # insert the godcmd
@@ -61,10 +62,6 @@ class Query:
                     logger.debug("[wechatmp] context: {} {} {}".format(context, wechatmp_msg, supported))
 
                     if supported and context:
-                        # set private openai_api_key
-                        # if from_user is not changed in itchat, this can be placed at chat_channel
-                        user_data = conf().get_user_data(from_user)
-                        context["openai_api_key"] = user_data.get("openai_api_key")
                         channel.running.add(from_user)
                         channel.produce(context)
                     else:
@@ -134,8 +131,10 @@ class Query:
 
                 # Only one request can access to the cached data
                 try:
-                    (reply_type, reply_content) = channel.cache_dict.pop(from_user)
-                except KeyError:
+                    (reply_type, reply_content) = channel.cache_dict[from_user].pop(0)
+                    if not channel.cache_dict[from_user]:  # If popping the message makes the list empty, delete the user entry from cache
+                        del channel.cache_dict[from_user]
+                except IndexError:
                     return "success"
 
                 if reply_type == "text":
@@ -149,7 +148,7 @@ class Query:
                             max_split=1,
                         )
                         reply_text = splits[0] + continue_text
-                        channel.cache_dict[from_user] = ("text", splits[1])
+                        channel.cache_dict[from_user].append(("text", splits[1]))
 
                     logger.info(
                         "[wechatmp] Request {} do send to {} {}: {}\n{}".format(
@@ -199,14 +198,14 @@ class Query:
                 logger.info("[wechatmp] Event {} from {}".format(msg.event, msg.source))
                 if msg.event in ["subscribe", "subscribe_scan"]:
                     reply_text = subscribe_msg()
-                    replyPost = create_reply(reply_text, msg)
-                    return encrypt_func(replyPost.render())
+                    if reply_text:
+                        replyPost = create_reply(reply_text, msg)
+                        return encrypt_func(replyPost.render())
                 else:
                     return "success"
-
             else:
                 logger.info("暂且不处理")
-                return "success"
+            return "success"
         except Exception as exc:
             logger.exception(exc)
             return exc

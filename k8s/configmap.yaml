@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chatbot-config
+data:
+  config.json: |
+    {
+      "qwen_access_key_id": "1576392",
+      "qwen_access_key_secret": "sk-80a200cfbd8947eb992565eb5ab9250c",
+      "qwen_agent_key": "b8146af800ee42d6a74c4f75120b45be_p_efm",
+      "qwen_app_id": "",
+      "qwen_node_id": "",
+      "open_ai_api_key": "YOUR API KEY",
+      "model": "qwen-plus",
+      "proxy": "",
+      "single_chat_prefix": ["bot", "@bot"],
+      "single_chat_reply_prefix": "[bot] ",
+      "group_chat_prefix": ["@bot"],
+      "group_name_white_list": ["ChatGPT测试群", "ChatGPT测试群2"],
+      "group_chat_in_one_session": ["ChatGPT测试群"],
+      "image_create_prefix": ["画", "看", "找"],
+      "speech_recognition": false,
+      "group_speech_recognition": false,
+      "voice_reply_voice": false,
+      "conversation_max_tokens": 1000,
+      "expires_in_seconds": 3600,
+
+      "channel_type": "wxy",
+      "wechaty_puppet_service_token":"puppet_padlocal_8c8a53084df74f7a9a1747f79fab26a6"
+      "character_desc": "你是ChatGPT, 一个由OpenAI训练的大型语言模型, 你旨在回答并解决人们的任何问题，并且可以使用多种语言与人交流。"
+    } 
